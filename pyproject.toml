@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "neural-nest"
+version = "0.4.1"
+description = "NN model drafts."
+authors = ["apehex <apehex@protonmail.com>"]
+readme = ".github/README.md"
+packages = [{include = "nestwork"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10, <3.12"
+mlable = {path = "../mlable/", develop = true} # mlable = ">=0.2"
+tensorflow = ">=2.14"
+tensorflow-datasets = ">=4.9"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
