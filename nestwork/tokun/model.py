@@ -11,12 +11,10 @@ import tensorflow as tf
 class Encoder(tf.keras.models.Model):
     def __init__(
         self,
-        token_dim: list,
-        encoding_dim: int,
-        embedding_dim: int,
+        token_dim: int,
+        input_dim: int,
         sequence_axis: int=1,
         feature_axis: int=-1,
-        activation: str='gelu',
         **kwargs
     ) -> None:
         # init
@@ -24,33 +22,15 @@ class Encoder(tf.keras.models.Model):
         # config
         self._config = {
             'token_dim': token_dim,
-            'encoding_dim': encoding_dim,
-            'embedding_dim': embedding_dim,
+            'input_dim': input_dim,
             'sequence_axis': sequence_axis,
-            'feature_axis': feature_axis,
-            'activation': activation,}
-        # successive dimensions of the merging units
-        __token_dim = [token_dim] if isinstance(token_dim, int) else token_dim
+            'feature_axis': feature_axis,}
         # layers
-        self._layers = [
-            # (B * G ^ D, U) => (B * G ^ D, E)
-            tf.keras.layers.Embedding(
-                input_dim=encoding_dim,
-                output_dim=embedding_dim,
-                embeddings_initializer='glorot_uniform',
-                name='embed-1'),] + [
-            # (B * G ^ i, E) => (B * G ^ (i-1), E)
-            tokun.layers.TokenizeBlock(
-                sequence_axis=sequence_axis,
-                feature_axis=feature_axis,
-                token_dim=__g,
-                embedding_dim=embedding_dim,
-                activation=activation,
-                name='tokenize-{}_{}'.format(__g, __i))
-            for __i, __g in enumerate(__token_dim)]
+        self._factor = 1. / tf.cast(input_dim, tf.float32)
+        self._divide = mlable.layers.reshaping.Divide(input_axis=sequence_axis, output_axis=feature_axis, factor=token_dim, insert=True, name='reshaping') # (B, S * T,) => (B, S, T)
 
-    def call(self, x: tf.Tensor) -> tf.Tensor:
-        return functools.reduce(lambda __x, __l: __l(__x), self._layers, x)
+    def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
+        return self._factor * self._divide(inputs)
 
     def get_config(self) -> dict:
         __config = super(Encoder, self).get_config()
@@ -67,13 +47,10 @@ class Encoder(tf.keras.models.Model):
 class Decoder(tf.keras.models.Model):
     def __init__(
         self,
-        token_dim: list,
-        encoding_dim: int,
-        embedding_dim: int,
+        token_dim: int,
+        output_dim: int,
         sequence_axis: int=1,
         feature_axis: int=-1,
-        activation: str='gelu',
-        output: str='categorical',
         **kwargs
     ) -> None:
         # init
@@ -81,32 +58,15 @@ class Decoder(tf.keras.models.Model):
         # config
         self._config = {
             'token_dim': token_dim,
-            'encoding_dim': encoding_dim,
-            'embedding_dim': embedding_dim,
+            'output_dim': output_dim,
             'sequence_axis': sequence_axis,
-            'feature_axis': feature_axis,
-            'activation': activation,
-            'output': output,}
-        # successive dimensions of the dividing units
-        __token_dim = [token_dim] if isinstance(token_dim, int) else token_dim
-        # binary vs categorical probabilities
-        __activation = 'softmax' if output == 'categorical' else 'sigmoid'
+            'feature_axis': feature_axis,}
         # layers
-        self._layers = [
-            # (B * G ^ i, E) => (B * G ^ (i+1), E)
-            tokun.layers.DetokenizeBlock(
-                sequence_axis=sequence_axis,
-                feature_axis=feature_axis,
-                token_dim=__g,
-                embedding_dim=embedding_dim,
-                activation=activation,
-                name='detokenize-{}_{}'.format(__g, __i))
-            for __i, __g in enumerate(__token_dim)] + [
-            # (B * G ^ D, E) => (B * G ^ D, U)
-            tokun.layers.HeadBlock(encoding_dim=encoding_dim, activation=__activation, name='project-head')]
+        self._factor = tf.cast(output_dim, tf.float32)
+        self._divide = mlable.layers.reshaping.Divide(input_axis=feature_axis, output_axis=sequence_axis, insert=False, factor=token_dim, name='reshaping') # (B, S, T * E) => (B, S * T, E)
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
-        return functools.reduce(lambda __x, __l: __l(__x), self._layers, x)
+        return self._factor * self._divide(inputs)
 
     def get_config(self) -> dict:
         __config = super(Decoder, self).get_config()
@@ -126,11 +86,8 @@ class AutoEncoder(tf.keras.models.Model):
         token_dim: list,
         input_dim: int,
         output_dim: int,
-        embedding_dim: int,
         sequence_axis: int=1,
         feature_axis: int=-1,
-        activation: str='gelu',
-        output: str='categorical',
         **kwargs
     ) -> None:
         # init
@@ -140,14 +97,11 @@ class AutoEncoder(tf.keras.models.Model):
             'token_dim': token_dim,
             'input_dim': input_dim,
             'output_dim': output_dim,
-            'embedding_dim': embedding_dim,
             'sequence_axis': sequence_axis,
-            'feature_axis': feature_axis,
-            'activation': activation,
-            'output': output,}
+            'feature_axis': feature_axis,}
         # layers
-        self._encoder = Encoder(token_dim=token_dim, encoding_dim=input_dim, embedding_dim=embedding_dim, sequence_axis=sequence_axis, feature_axis=feature_axis, activation=activation)
-        self._decoder = Decoder(token_dim=token_dim[::-1], encoding_dim=output_dim, embedding_dim=embedding_dim, sequence_axis=sequence_axis, feature_axis=feature_axis, activation=activation, output=output)
+        self._encoder = Encoder(token_dim=token_dim, input_dim=input_dim, sequence_axis=sequence_axis, feature_axis=feature_axis)
+        self._decoder = Decoder(token_dim=token_dim, output_dim=output_dim, sequence_axis=sequence_axis, feature_axis=feature_axis)
 
     def call(self, x: tf.Tensor) -> tf.Tensor:
         return self._decoder(self._encoder(x))
