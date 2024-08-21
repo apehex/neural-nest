@@ -5,6 +5,8 @@ import functools
 import keras
 import tensorflow as tf
 
+import mlable.layers.reshaping
+
 # ENCODER #####################################################################
 
 @keras.saving.register_keras_serializable(package='models')
@@ -65,7 +67,7 @@ class Decoder(tf.keras.models.Model):
         self._factor = tf.cast(output_dim, tf.float32)
         self._divide = mlable.layers.reshaping.Divide(input_axis=feature_axis, output_axis=sequence_axis, insert=False, factor=token_dim, name='reshaping') # (B, S, T * E) => (B, S * T, E)
 
-    def call(self, x: tf.Tensor) -> tf.Tensor:
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
         return self._factor * self._divide(inputs)
 
     def get_config(self) -> dict:
