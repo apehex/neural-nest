@@ -6,29 +6,30 @@ import math
 
 import tensorflow as tf
 
+import mlable.ops
+import mlable.sampling
+import mlable.utils
+
+# UNICODE #####################################################################
+
+CODE_STX = b'\x02'
+CODE_ETX = b'\x03'
+CODE_FS = b'\x1c'
+CODE_GS = b'\x1d'
+CODE_RS = b'\x1e'
+CODE_US = b'\x1f'
+
 # ENCODE ######################################################################
 
-def _encode_scalar(text: str, token_size: int) -> tf.Tensor:
-    # encode the string
-    __bytes = list(text.encode('utf-32-be'))
-    # pad until the encodeed text has length multiple of the token length
-    __padding = (-len(__bytes) % token_size) * [0]
-    # concat data and padding
-    return tf.convert_to_tensor(value=__bytes + __padding, dtype=tf.dtypes.int32) # uint8 is not allowed
-
-def _encode_tensor(data: tf.Tensor, token_size: int, sample_size: int=64) -> tf.Tensor:
+def encode(data: tf.Tensor, token_size: int, sample_size: int, dtype: tf.dtypes.DType=tf.dtypes.int32) -> tf.Tensor:
     # factor 4 because of the UTF-32 encoding
-    __dim = math.ceil(4 * sample_size / token_size) * token_size
-    # Decode bytes from UTF-8
+    __dim = math.ceil(sample_size / token_size) * token_size
+    # decode bytes from UTF-8
     __bytes = tf.strings.unicode_transcode(input=data, input_encoding='UTF-8', output_encoding='UTF-32-BE') # (B,)
-    # Decode byte strings to arrays of integers
-    return tf.io.decode_raw(__bytes, out_type=tf.uint8, fixed_length=__dim) # (B, 4 * S)
-
-def encode(data: any, token_size: int, sample_size: int=64) -> tf.Tensor:
-    if isinstance(data, str):
-        return _encode_scalar(text=data, token_size=token_size)
-    else:
-        return _encode_tensor(data=data, token_size=token_size, sample_size=sample_size)
+    # decode byte strings to arrays of byte integers
+    __bytes = tf.io.decode_raw(__bytes, out_type=tf.uint8, fixed_length=__dim) # (B, 4 * S)
+    # cast to int32 as uint8 is not std
+    return tf.cast(__bytes, dtype=dtype)
 
 # RESHAPE #####################################################################
 
@@ -39,14 +40,12 @@ def chunk(seq: list, size: int, repeats: bool=True) -> list:
 def merge(chunks: list) -> list:
     return list(itertools.chain.from_iterable(chunks))
 
-def shape(groups: list, flatten: bool=False) -> list:
-    return [-1] + (1 - int(flatten)) * groups
+def shape(expand: list=[]) -> list:
+    return expand + [-1]
 
-def reshape(data: tf.Tensor, groups: list, flatten: bool=True) -> tf.Tensor:
-    # total length of the token
-    __token_size = math.prod(groups)
+def reshape(data: tf.Tensor, expand: list=[]) -> tf.Tensor:
     # group by token unit
-    __shape = shape(groups=groups, flatten=flatten)
+    __shape = shape(expand=expand)
     # partition or flatten the data
     return tf.reshape(tensor=data, shape=__shape) # for example (-1, G, G, G) the first dimension is not B
 
@@ -57,56 +56,50 @@ def offset(data: tf.Tensor, ticks: int=1) -> tf.Tensor:
 
 # DECODE ######################################################################
 
-def interpret(output: tf.Tensor) -> tf.Tensor:
-    return tf.argmax(input=output, axis=-1, output_type=tf.dtypes.int32) # uint8 is not allowed
-
-def decode(tokens: tf.Tensor) -> str:
-    __b = tf.reshape(tensor=tokens, shape=(-1,)).numpy().tolist()
-    return bytes(__b).decode(encoding='utf-32-be', errors='replace')
-
-# END-TO-END ##################################################################
-
-def process(dataset: tf.data.Dataset, pipeline: list, replace: bool=True, feature: str=None) -> tf.data.Dataset:
-    # fetch the target feature in the dataset
-    __dataset = dataset.map(lambda x: x[feature]) if feature else dataset
-    # specify how to combine each operation result with the original dataset
-    __replace = len(list(pipeline)) * [replace] if isinstance(replace, bool) else replace
-    # apply the operation successively  
-    for __fn, __repl in zip(pipeline, __replace):
-        __new = __dataset.map(__fn)
-        __dataset = __new if __repl else __dataset.concatenate(__new)
-    return __dataset
+def decode(data: tf.Tensor) -> tf.Tensor:
+    # make sure the dtype is large enough for UTF-32 codepoints
+    __data = tf.cast(data, dtype=tf.dtypes.int32)
+    # group the bytes 4 by 4
+    __shape = mlable.utils.divide_shape(shape=__data.shape, input_axis=-2, output_axis=-1, factor=4, insert=True)
+    __bytes = tf.reshape(tensor=__data, shape=__shape)
+    # compute the UTF-32-BE codepoints
+    __codes = mlable.ops.reduce_base(data=__bytes, base=256, axis=-1, keepdims=False)
+    # actually decode
+    __utf32 = tf.strings.unicode_encode(__codes, output_encoding='UTF-32-BE')
+    # convert to standard UTF-8
+    return tf.strings.unicode_transcode(input=__utf32, input_encoding='UTF-32-BE', output_encoding='UTF-8')
 
 # > ###########################################################################
 
-def preprocess(text: str, groups: list, flatten: bool=True) -> tf.Tensor:
-    # total length of the token
-    __token_size = math.prod(groups)
+def preprocess(text: str, token_size: int, expand: list=[]) -> tf.Tensor:
+    # as tensor
+    __data = tf.convert_to_tensor(text, dtype=tf.dtypes.string)
     # list of bytes
-    __bytes = encode(data=text, token_size=__token_size)
+    __bytes = encode(data=__data, token_size=token_size, sample_size=4 * len(text))
     # partition or flatten
-    __bytes = reshape(data=__bytes, groups=groups, flatten=flatten)
-    # one-hot
-    return tf.one_hot(indices=__bytes, depth=256, axis=-1)
+    return reshape(data=__bytes, expand=expand)
 
 # < ###########################################################################
 
 def unpad(text: str) -> str:
     return text.strip('\x00')
 
-def postprocess(output: tf.Tensor) -> str:
+def unpack(data: tf.Tensor) -> list:
+    __data = data.numpy().tolist()
+    return [__s.decode('utf-8') for __s in __data]
+
+def postprocess(prediction: tf.Tensor, binary: bool=False, random: bool=False) -> str:
     # from one-hot to UTF-32 bytes
-    __output = interpret(output=output)
+    __output = mlable.sampling.binary(prediction=prediction, threshold=0.5, random=random) if binary else mlable.sampling.categorical(prediction=prediction, random=random)
     # flatten the groups of 4 bytes
-    __output = decode(tokens=__output)
-    # remove the padding
-    return unpad(text=__output)
+    return decode(data=__output)
 
 # SAMPLING ####################################################################
 
 def sample(model: tf.keras.models.Model, text: str, **kwargs) -> tuple:
-    __x = preprocess(text=text, **kwargs)
+    __x = preprocess(text=text, token_size=kwargs.get('token_size', 16), expand=kwargs.get('expand', [1]))
     __e = model._encoder(__x)
-    __p = model(__x)
-    __y = postprocess(__p)
-    return (__x, __e, __p, __y)
+    __p = model._decoder(__e)
+    __y = postprocess(__p, binary=kwargs.get('binary', False), random=kwargs.get('random', False))
+    __o = unpack(__y)
+    return (__x, __e, __p, __y, __o)

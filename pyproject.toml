@@ -1,18 +1,20 @@
 [tool.poetry]
 name = "nestwork"
-version = "0.4.1"
-description = "NN model drafts."
+version = "0.4.2"
+description = "Neural network drafts."
 authors = ["apehex <apehex@protonmail.com>"]
 readme = ".github/README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10, <3.12"
+python = ">=3.10, <3.13"
 mlable = ">=0.7"
 tensorflow = ">=2.15"
-tensorflow-datasets = ">=4.9"
+
+[tool.poetry.group.test.dependencies]
+pytest = "*"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "*"
+tensorflow-datasets = ">=4.9"
 
 [build-system]
 requires = ["poetry-core"]

@@ -11,14 +11,14 @@ import tensorflow as tf
 def compare(left: str, right: str) -> float:
     return sum(__l == __r for __l, __r in zip(left, right)) / max(1, len(left))
 
-# TOKEN DISTANCE ##############################################################
+# TOKEN CONTENT ###############################################################
 
 def intersection(left: str, right: str) -> float:
     __intersection = len(set(left).intersection(set(right)))
     __reference = min(len(set(left)), len(set(right)))
-    return __intersection / max(1., __reference)
+    return __intersection / max(1, __reference)
 
 # ROBUSTNESS ##################################################################
 
 def neighbors(point: tf.Tensor, radius: float, count: int) -> tf.Tensor:
-    return point + tf.random.uniform(shape=(count, point.shape[-1]), minval=-radius, maxval=radius, dtype=tf.dtypes.float32)
+    return point + tf.random.uniform(shape=(count, point.shape[-1]), minval=-radius, maxval=radius, dtype=point.dtype)
