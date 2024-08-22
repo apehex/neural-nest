@@ -28,11 +28,11 @@ class Encoder(tf.keras.models.Model):
             'sequence_axis': sequence_axis,
             'feature_axis': feature_axis,}
         # layers
-        self._factor = 1. / tf.cast(input_dim, tf.float32)
+        self._factor = tf.cast(1. / input_dim, tf.float32)
         self._divide = mlable.layers.reshaping.Divide(input_axis=sequence_axis, output_axis=feature_axis, factor=token_dim, insert=True, name='reshaping') # (B, S * T,) => (B, S, T)
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
-        return self._factor * self._divide(inputs)
+        return tf.cast(self._factor, inputs.dtype) * self._divide(inputs)
 
     def get_config(self) -> dict:
         __config = super(Encoder, self).get_config()
@@ -68,7 +68,7 @@ class Decoder(tf.keras.models.Model):
         self._divide = mlable.layers.reshaping.Divide(input_axis=feature_axis, output_axis=sequence_axis, insert=False, factor=token_dim, name='reshaping') # (B, S, T * E) => (B, S * T, E)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
-        return self._factor * self._divide(inputs)
+        return tf.cast(self._factor, inputs.dtype) * self._divide(inputs)
 
     def get_config(self) -> dict:
         __config = super(Decoder, self).get_config()
