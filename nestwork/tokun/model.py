@@ -29,7 +29,7 @@ class Encoder(tf.keras.models.Model):
             'feature_axis': feature_axis,}
         # layers
         self._factor = tf.cast(1. / input_dim, tf.float32)
-        self._divide = mlable.layers.shaping.Divide(input_axis=sequence_axis, output_axis=feature_axis, factor=token_dim, insert=True, name='reshaping') # (B, S * T,) => (B, S, T)
+        self._divide = mlable.layers.shaping.Divide(axis=sequence_axis, factor=token_dim, insert=True, right=True, name='reshaping') # (B, S * T,) => (B, S, T)
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         return tf.cast(self._factor, inputs.dtype) * self._divide(inputs)
@@ -65,7 +65,7 @@ class Decoder(tf.keras.models.Model):
             'feature_axis': feature_axis,}
         # layers
         self._factor = tf.cast(output_dim, tf.float32)
-        self._divide = mlable.layers.shaping.Divide(input_axis=feature_axis, output_axis=sequence_axis, insert=False, factor=token_dim, name='reshaping') # (B, S, T * E) => (B, S * T, E)
+        self._divide = mlable.layers.shaping.Divide(axis=feature_axis, factor=token_dim, insert=False, right=False, name='reshaping') # (B, S, T * E) => (B, S * T, E)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         return tf.cast(self._factor, inputs.dtype) * self._divide(inputs)

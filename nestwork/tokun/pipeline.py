@@ -58,7 +58,7 @@ def codepoint(data: tf.Tensor) -> tf.Tensor:
     # make sure the dtype is large enough for UTF-32 codepoints
     __data = tf.cast(data, dtype=tf.dtypes.int32)
     # group the bytes 4 by 4
-    __shape = mlable.shapes.divide(shape=data.shape, input_axis=-2, output_axis=-1, factor=4, insert=True)
+    __shape = mlable.shapes.divide(shape=data.shape, axis=-1, factor=4, insert=True, right=True)
     __bytes = tf.reshape(tensor=__data, shape=__shape)
     # compute the UTF-32-BE codepoints
     return mlable.maths.ops.reduce_base(data=__bytes, base=256, axis=-1, keepdims=False)
