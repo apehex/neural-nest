@@ -1,14 +1,14 @@
 [tool.poetry]
 name = "nestwork"
-version = "0.5.3"
+version = "0.5.4"
 description = "Neural network drafts."
 authors = ["apehex <apehex@protonmail.com>"]
 readme = ".github/README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10, <3.13"
-mlable = ">=0.19"
-tensorflow = ">=2.16, <2.19"
+mlable = ">=0.20"
+tensorflow = ">=2.16, <2.20"
 
 [tool.poetry.group.test.dependencies]
 pytest = "*"
